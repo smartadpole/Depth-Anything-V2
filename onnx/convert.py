@@ -42,7 +42,7 @@ def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
     model = load_model(model_path, encoder, device)
 
     # Create dummy input for the model
-    dummy_input = torch.randn(1, 3, height, width).to(device)  # Adjust the size as needed
+    dummy_input = torch.randn(1, 3, width, height).to(device)  # Adjust the size as needed
     for name, param in model.named_parameters():
         print(f"Parameter {name} is on device {param.device}")
         break
@@ -60,7 +60,7 @@ def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
 def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
     model = ONNXModel(model_file)
     img_org = cv2.imread(img_path)
-    img = cv2.resize(img_org, (width, height), cv2.INTER_LANCZOS4)
+    img = cv2.resize(img_org, (height, width), cv2.INTER_LANCZOS4)
     mean=[0.485, 0.456, 0.406]
     std=[0.229, 0.224, 0.225]
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0

@@ -95,8 +95,16 @@ depth = pipe(image)["depth"]
 ### convert to onnx
 ```bash
   python onnx/convert.py --checkpoint depth_anything_v2_vits.pth \
-  --output <your path> --image pred_image.png --width 392 --height 644 --device cpu 
+  --output <your path> --image pred_image.png --width 644 --height 392 --device cpu 
 ``` 
+
+### convert to rknn
+```bash
+  python rknn/rknn_convert.py --onnx_model depth_anything_v2_vits.onnx \
+  --rknn_model depth_anything_v2_vits.rknn 
+  --image pred_image.png --width 644 --height 392 
+  
+```
 
 ### Running script on *images*
 
