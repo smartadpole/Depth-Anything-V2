@@ -92,6 +92,12 @@ image = Image.open('your/image/path')
 depth = pipe(image)["depth"]
 ```
 
+### convert to onnx
+```bash
+  python onnx/convert.py --checkpoint depth_anything_v2_vits.pth \
+  --output <your path> --image pred_image.png --width 392 --height 644 --device cpu 
+``` 
+
 ### Running script on *images*
 
 ```bash

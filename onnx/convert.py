@@ -21,7 +21,7 @@ H = 392
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Export model to ONNX format")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to the trained model.")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Path to the trained model.")
     parser.add_argument("--output", type=str, required=True, help="Path to save the output image.")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
     parser.add_argument("--device", type=str, default=torch.device("cuda" if torch.cuda.is_available() else "cpu"), help="Device to run the model on.")
@@ -37,7 +37,8 @@ def load_model(model_path, encoder, device):
     return model
 
 
-def export_to_onnx(model_path, onnx_file, encoder, width=W, height=H, device="cuda"):
+def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
+    encoder = os.path.splitext(os.path.basename(model_path))[0].split('_')[-1]
     model = load_model(model_path, encoder, device)
 
     # Create dummy input for the model
@@ -60,9 +61,9 @@ def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
     model = ONNXModel(model_file)
     img_org = cv2.imread(img_path)
     img = cv2.resize(img_org, (width, height), cv2.INTER_LANCZOS4)
-    mean = [0.45, 0.45, 0.45]
-    std = [0.225, 0.225, 0.225]
-    img = img / 255.0
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0
     img = np.subtract(img, mean)
     img = np.divide(img, std)
     img = img.transpose(2, 0, 1)
@@ -85,13 +86,13 @@ def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
 
 def main():
     args = parse_args()
-
-    MkdirSimple(args.output)
-    onnx_file = os.path.join(args.output, os.path.splitext(os.path.basename(args.model_path))[0] + ".onnx")
-    export_to_onnx(args.model_path, onnx_file, 'vits', args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
+    output_dir = os.path.join(args.output, f"{args.width}_{args.height}")
+    onnx_file = os.path.join(output_dir, os.path.splitext(os.path.basename(args.checkpoint))[0] + ".onnx")
+    MkdirSimple(onnx_file)
+    export_to_onnx(args.checkpoint, onnx_file, args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
     image, depth = test_onnx(args.image, onnx_file, args.width, args.height, 'cuda')
-    cv2.imwrite(os.path.join(args.output, "test.png"), image)
-    cv2.imwrite(os.path.join(args.output, "depth.png"), depth)
+    cv2.imwrite(os.path.join(output_dir, "test.png"), image)
+    cv2.imwrite(os.path.join(output_dir, "depth.png"), depth)
 
 
 if __name__ == "__main__":

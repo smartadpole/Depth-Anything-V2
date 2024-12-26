@@ -53,6 +53,7 @@ class ONNXModel():
     def forward(self, image:np.ndarray):
         input_feed = self.get_input_feed(self.input_name, image)
         scores = self.onnx_session.run(self.output_name, input_feed=input_feed)
+        print("device:", self.onnx_session.get_providers())
         return scores
 
 
