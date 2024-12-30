@@ -5,7 +5,7 @@ import os
 import time
 import argparse
 from tools.file import MkdirSimple
-from tools.utils import print_onnx
+from tools.file import ReadImageList
 from depth_anything_v2.dpt import DepthAnythingV2
 from onnxmodel import ONNXModel
 
@@ -42,7 +42,7 @@ def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
     model = load_model(model_path, encoder, device)
 
     # Create dummy input for the model
-    dummy_input = torch.randn(1, 3, width, height).to(device)  # Adjust the size as needed
+    dummy_input = torch.randn(1, 3, height, width).to(device)  # Adjust the size as needed
     for name, param in model.named_parameters():
         print(f"Parameter {name} is on device {param.device}")
         break
@@ -54,13 +54,11 @@ def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
                       do_constant_folding=True)
 
     print(f"Model exported to {onnx_file}")
-    print_onnx(onnx_file)
 
 
-def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
-    model = ONNXModel(model_file)
+def test_onnx(img_path, model, width=W, height=H):
     img_org = cv2.imread(img_path)
-    img = cv2.resize(img_org, (height, width), cv2.INTER_LANCZOS4)
+    img = cv2.resize(img_org, (width, height), cv2.INTER_LANCZOS4)
     mean=[0.485, 0.456, 0.406]
     std=[0.229, 0.224, 0.225]
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0
@@ -83,16 +81,26 @@ def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
 
     return combined_img, depth
 
+def test_dir(image_dir, model_file, output_dir, width, height):
+    model = ONNXModel(model_file)
+    img_list = ReadImageList(image_dir)
+    print("test image number: ", len(img_list))
+    for file in img_list:
+        image, depth = test_onnx(file, model, width, height)
+        depth_file = os.path.join(output_dir, 'depth', os.path.basename(file))
+        concat_file = os.path.join(output_dir, 'concat', os.path.basename(file))
+        MkdirSimple(depth_file)
+        MkdirSimple(concat_file)
+        cv2.imwrite(concat_file, image)
+        cv2.imwrite(depth_file, depth)
 
 def main():
     args = parse_args()
     output_dir = os.path.join(args.output, f"{args.width}_{args.height}")
-    onnx_file = os.path.join(output_dir, os.path.splitext(os.path.basename(args.checkpoint))[0] + ".export_onnx")
+    onnx_file = os.path.join(output_dir, os.path.splitext(os.path.basename(args.checkpoint))[0] + ".onnx")
     MkdirSimple(onnx_file)
     export_to_onnx(args.checkpoint, onnx_file, args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
-    image, depth = test_onnx(args.image, onnx_file, args.width, args.height, 'cuda')
-    cv2.imwrite(os.path.join(output_dir, "test.png"), image)
-    cv2.imwrite(os.path.join(output_dir, "depth.png"), depth)
+    test_dir(args.image, onnx_file, output_dir, args.width, args.height)
 
 
 if __name__ == "__main__":
