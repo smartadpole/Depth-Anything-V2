@@ -1,12 +1,15 @@
-import os
-import urllib
-import traceback
+import sys, os
+
+CURRENT_DIR = os.path.dirname(__file__)
+sys.path.append(os.path.join(CURRENT_DIR, '../../'))
+
 import time
 import sys
 import numpy as np
 import cv2
 from rknn.api import RKNN
 import argparse
+from export_onnx.onnxmodel import ONNXModel
 
 W = 644
 H = 392
@@ -48,34 +51,10 @@ def show_progress(blocknum, blocksize, totalsize):
     f.flush()
     f.write('\r\n')
 
-def print_onnx(model):
-    import onnxruntime as ort
-
-    # 加载 ONNX 模型
-    session = ort.InferenceSession(model)
-
-    # 查看模型的输入信息
-    print("Model Inputs:")
-    for input in session.get_inputs():
-        print(f"Name: {input.name}")
-        print(f"Shape: {input.shape}")
-        print(f"Data Type: {input.type}")
-        print("-" * 50)
-        break
-
-    # 查看模型的输出信息
-    print("Model Outputs:")
-    for output in session.get_outputs():
-        print(f"Name: {output.name}")
-        print(f"Shape: {output.shape}")
-        print(f"Data Type: {output.type}")
-        print("-" * 50)
-        break
-
 if __name__ == '__main__':
     args = parse_args()
 
-    print_onnx(args.onnx_model)
+    ONNXModel(args.onnx_model)
     # exit()
 
     # Create RKNN object
@@ -87,7 +66,7 @@ if __name__ == '__main__':
     print('done')
 
     # Load model
-    print_onnx(args.onnx_model)
+    ONNXModel(args.onnx_model)
     print('--> Loading model')
     ret = rknn.load_onnx(model=args.onnx_model)
     if ret != 0:
@@ -96,7 +75,7 @@ if __name__ == '__main__':
     print('done')
 
     # Build model
-    print_onnx(args.onnx_model)
+    ONNXModel(args.onnx_model)
     print('--> Building model')
     ret = rknn.build(do_quantization=False, dataset='./dataset.txt')
     if ret != 0:

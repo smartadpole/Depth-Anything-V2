@@ -87,7 +87,7 @@ def test_onnx(img_path, model_file, width=W, height=H, device="cuda"):
 def main():
     args = parse_args()
     output_dir = os.path.join(args.output, f"{args.width}_{args.height}")
-    onnx_file = os.path.join(output_dir, os.path.splitext(os.path.basename(args.checkpoint))[0] + ".onnx")
+    onnx_file = os.path.join(output_dir, os.path.splitext(os.path.basename(args.checkpoint))[0] + ".export_onnx")
     MkdirSimple(onnx_file)
     export_to_onnx(args.checkpoint, onnx_file, args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
     image, depth = test_onnx(args.image, onnx_file, args.width, args.height, 'cuda')
