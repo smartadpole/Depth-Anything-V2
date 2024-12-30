@@ -10,6 +10,7 @@ import cv2
 from rknn.api import RKNN
 import argparse
 from export_onnx.onnxmodel import ONNXModel
+from tools.file import MkdirSimple, ReadImageList
 
 W = 644
 H = 392
@@ -23,36 +24,47 @@ def parse_args():
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
     return parser.parse_args()
 
-def readable_speed(speed):
-    speed_bytes = float(speed)
-    speed_kbytes = speed_bytes / 1024
-    if speed_kbytes > 1024:
-        speed_mbytes = speed_kbytes / 1024
-        if speed_mbytes > 1024:
-            speed_gbytes = speed_mbytes / 1024
-            return "{:.2f} GB/s".format(speed_gbytes)
-        else:
-            return "{:.2f} MB/s".format(speed_mbytes)
-    else:
-        return "{:.2f} KB/s".format(speed_kbytes)
+def test_dir(image_dir, rknn, output_dir, width, height):
+    img_list = ReadImageList(image_dir)
+    print("test image number: ", len(img_list))
+    for file in img_list:
+        image, depth = test_image(file, rknn, width, height)
+        depth_file = os.path.join(output_dir, 'depth', os.path.basename(file))
+        concat_file = os.path.join(output_dir, 'concat', os.path.basename(file))
+        MkdirSimple(depth_file)
+        MkdirSimple(concat_file)
+        cv2.imwrite(concat_file, image)
+        cv2.imwrite(depth_file, depth)
 
+    print('output shape is {}'.format(depth.shape))
 
-def show_progress(blocknum, blocksize, totalsize):
-    speed = (blocknum * blocksize) / (time.time() - start_time)
-    speed_str = " Speed: {}".format(readable_speed(speed))
-    recv_size = blocknum * blocksize
+def test_image(image_path, rknn, width, height):
+    # Set inputs
+    img_org = cv2.imread(image_path)
+    img = cv2.resize(img_org, (width, height), cv2.INTER_LANCZOS4)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = np.expand_dims(img, 0)
+    inputs = [img]
 
-    f = sys.stdout
-    progress = (recv_size / totalsize)
-    progress_str = "{:.2f}%".format(progress * 100)
-    n = round(progress * 50)
-    s = ('#' * n).ljust(50, '-')
-    f.write(progress_str.ljust(8, ' ') + '[' + s + ']' + speed_str)
-    f.flush()
-    f.write('\r\n')
+    start_time = time.time()
+    outputs = rknn.inference(inputs, data_format='nhwc')
+    end_time = time.time()
+    print(f"Inference time: {(end_time - start_time) * 1000:.2f} ms")
+
+    dis_array = outputs[0][0]
+    dis_array = (dis_array - dis_array.min()) / (dis_array.max() - dis_array.min()) * 255.0
+    dis_array = dis_array.astype("uint8")
+
+    depth = cv2.resize(dis_array, (img_org.shape[1], img_org.shape[0]))
+    depth = cv2.applyColorMap(cv2.convertScaleAbs(depth, 1), cv2.COLORMAP_PARULA)
+    combined_img = np.vstack((img_org, depth))
+
+    return combined_img, depth
 
 if __name__ == '__main__':
     args = parse_args()
+    output_dir = args.rknn_model
+    MkdirSimple(output_dir)
 
     ONNXModel(args.onnx_model)
     # exit()
@@ -62,7 +74,7 @@ if __name__ == '__main__':
 
     # pre-process config
     print('--> config model')
-    rknn.config(mean_values=[123.675, 116.28, 103.53], std_values=[58.82, 58.82, 58.82], target_platform='rk3588')
+    rknn.config(mean_values=[x * 255 for x in [0.485, 0.456, 0.406]], std_values=[x * 255 for x in [0.229, 0.224, 0.225]], target_platform='rk3588')
     print('done')
 
     # Load model
@@ -77,7 +89,7 @@ if __name__ == '__main__':
     # Build model
     ONNXModel(args.onnx_model)
     print('--> Building model')
-    ret = rknn.build(do_quantization=False, dataset='./dataset.txt')
+    ret = rknn.build(do_quantization=True, dataset='./dataset.txt')
     if ret != 0:
         print('Build model failed!')
         exit(ret)
@@ -91,11 +103,6 @@ if __name__ == '__main__':
         exit(ret)
     print('done')
 
-    # Set inputs
-    img_org = cv2.imread(args.image)
-    img = cv2.resize(img_org, (args.height, args.width), cv2.INTER_LANCZOS4)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = np.expand_dims(img, 0)
 
     # Init runtime environment
     print('--> Init runtime environment')
@@ -105,21 +112,6 @@ if __name__ == '__main__':
         exit(ret)
     print('done')
 
-    # Inference
-    print('--> Running model')
-    start_time = time.time()
-    outputs = rknn.inference(inputs=[img], data_format=['nhwc'])
-    print('len of output {}'.format(len(outputs)))
-    [print('output shape is {}'.format(output.shape)) for output in outputs]
-    print('done')
-    print("Inference time: {:.2f} seconds".format(time.time() - start_time))
-    dis_array = outputs[0][0]
-    dis_array = (dis_array - dis_array.min()) / (dis_array.max() - dis_array.min()) * 255.0
-    dis_array = dis_array.astype("uint8")
-
-    depth = cv2.resize(dis_array, (img_org.shape[1], img_org.shape[0]))
-    depth = cv2.applyColorMap(cv2.convertScaleAbs(depth, 1), cv2.COLORMAP_PARULA)
-
-    cv2.imwrite(os.path.join(os.path.dirname(args.rknn_model), "depth_rknn.png"), depth)
+    test_dir(args.image, rknn, os.path.dirname(output_dir), args.width, args.height)
 
     rknn.release()
