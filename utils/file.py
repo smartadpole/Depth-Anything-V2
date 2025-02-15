@@ -10,13 +10,13 @@
 import os
 import re
 
-__all__ = ["FILE_SUFFIX", "Walk", "MkdirSimple", "WriteTxt", "WalkImage", "GetImages", 'ReadImageList', 'match_stereo_file']
+__all__ = ["FILE_SUFFIX", "Walk", "MkdirSimple", "WriteTxt", "WalkImage", "GetImages", 'ReadImageList', 'match_images']
 
 FILE_SUFFIX = ['jpg', 'png', 'jpeg', 'bmp', 'tiff']
 
 
 def Walk(path, suffix:tuple):
-    file_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if f.endswith(suffix)]
+    file_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path, followlinks=True) for f in filenames if f.endswith(suffix)]
 
     try:
         file_list.sort(key=lambda x:int(re.findall('\d+', os.path.splitext(os.path.basename(x))[0])[0]))
@@ -69,14 +69,25 @@ def GetImages(path):
 
     return paths, root_len
 
-def match_stereo_file(left_path, right_path):
-    left_list = ReadImageList(left_path)
-    right_list = ReadImageList(right_path)
+def match_images(paths:list):
+    lists = [ReadImageList(path) for path in paths]
 
-    common_files = set(os.path.relpath(file, start=os.path.commonpath(left_list)) for file in left_list).intersection(
-        os.path.relpath(file, start=os.path.commonpath(right_list)) for file in right_list)
-    left_list[:] = [file for file in left_list if
-                    os.path.relpath(file, start=os.path.commonpath(left_list)) in common_files]
-    right_list[:] = [file for file in right_list if
-                     os.path.relpath(file, start=os.path.commonpath(right_list)) in common_files]
-    return left_list, right_list
+    common_files = None
+    for i, files in enumerate(lists):
+        files = [os.path.relpath(f, start=paths[i]) for f in files]
+        if common_files is None:
+            common_files = set(files)
+        else:
+            common_files.intersection_update(files)
+
+    common_files = list(common_files)
+    try:
+        common_files.sort(key=lambda x:int(re.findall('\d+', os.path.splitext(os.path.basename(x))[0])[0]))
+    except:
+        common_files.sort()
+    common_files = list(common_files)
+    matched_lists = []
+    for root in paths:
+        matched_lists.append([os.path.join(root, file) for file in common_files])
+
+    return matched_lists

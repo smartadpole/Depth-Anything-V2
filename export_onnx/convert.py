@@ -16,12 +16,12 @@ model_configs = {
     'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
 }
 
-W = 644
-H = 392
+W = 644 # // 14
+H = 392 # // 14
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Export model to ONNX format")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to the trained model.")
+    parser.add_argument("--model", type=str, required=True, help="Path to the trained model.")
     parser.add_argument("--output", type=str, required=True, help="Path to save the output image.")
     parser.add_argument("--image", type=str, required=True, help="Path to the input image.")
     parser.add_argument("--device", type=str, default=torch.device("cuda" if torch.cuda.is_available() else "cpu"), help="Device to run the model on.")
@@ -58,12 +58,13 @@ def export_to_onnx(model_path, onnx_file, width=W, height=H, device="cuda"):
 
 def main():
     args = parse_args()
-    model_name = os.path.splitext(os.path.basename(args.checkpoint))[0].replace(" ", "_")
+    model_name = "_".join(args.model.split("/")[-3:]).replace("ckpts", "").replace("=", "-").strip('_')
+    model_name = os.path.splitext(model_name)[0].split("-val")[0]
     output = os.path.join(args.output, model_name, f'{args.width}_{args.height}')
     onnx_file = os.path.join(output, f'DepthAnythingV2_{args.width}_{args.height}_{model_name}_12.onnx')
     MkdirSimple(output)
 
-    export_to_onnx(args.checkpoint, onnx_file, args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
+    export_to_onnx(args.model, onnx_file, args.width, args.height, args.device)  # Replace 'vitl' with the desired encoder
 
     print("export onnx to {}".format(onnx_file))
     if args.test:

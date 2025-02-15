@@ -15,14 +15,18 @@ import argparse
 import cv2
 import numpy as np
 from onnxmodel import ONNXModel
-from utils.file import MkdirSimple, match_stereo_file, ReadImageList
+from utils.file import MkdirSimple, match_images, ReadImageList
 import os
 import time
+from utils.dataset import set_by_config_yaml
 
 DEFAULT_COUNT = 10
 MAX_COUNT = 500
 mean = [0.485, 0.456, 0.406]
 std = [0.229, 0.224, 0.225]
+DEFAULT_MAX_COUNT = -1
+
+MAX_DEPTH = 20
 
 def GetArgs():
     parser = argparse.ArgumentParser(description="",
@@ -31,6 +35,7 @@ def GetArgs():
     parser.add_argument("-o", "--output", type=str, required=True, help="output model path")
     parser.add_argument("--left_image", type=str, default="", help="test image left file or directory")
     parser.add_argument('--right_image', type=str, default="", help="test image right file or directory")
+    parser.add_argument('--max_count', type=int, default=-1, help="test image count")
 
     args = parser.parse_args()
     return args
@@ -127,7 +132,7 @@ def visual_image(img, depth):
 
     return combined_img
 
-def test_image(image_files: list, model):
+def test_image(image_files: list, model, K):
     if not all(os.path.basename(image_files[0]) == os.path.basename(f) for f in image_files):
         print("All file names in image_files must be the same")
         return
@@ -144,15 +149,30 @@ def test_image(image_files: list, model):
         imgs.append(img)
 
     img_org = imgs[0]
-    disp = inference(imgs, model)
-    disp = inverse_resize(disp, img_org.shape[:2])
+    depth = inference(imgs, model)
+    depth = inverse_resize(depth, img_org.shape[:2])
 
-    disp_norm = (disp - disp.min()) / (disp.max() - disp.min()) * 255.0
-    disp_norm = disp_norm.astype("uint8")
+    depth = 1 / (depth + 1e-6) * 167
 
-    combined_img = visual_image(img_org, disp_norm)
+    use_fx = True
+    if use_fx:
+        H, W = depth.shape
+        fx = K[0, 0]
+        depth = depth / (W / fx)
 
-    return combined_img, disp, disp_norm
+
+    depth[depth < 0] = 0
+    depth[depth > MAX_DEPTH] = MAX_DEPTH
+    depth_img_u16 = depth / MAX_DEPTH * 65535
+    depth_img_u16 = depth_img_u16.astype("uint16")
+    depth = depth_img_u16
+
+    dpeth_norm = (depth_img_u16 - depth_img_u16.min()) / (depth_img_u16.max() - depth_img_u16.min()) * 255.0
+    dpeth_norm = dpeth_norm.astype("uint8")
+
+    combined_img = visual_image(img_org, dpeth_norm)
+
+    return combined_img, depth, dpeth_norm
 
 def save_image(image, depth, output_dir, file_name):
     depth_file = os.path.join(output_dir, 'depth', file_name)
@@ -162,7 +182,7 @@ def save_image(image, depth, output_dir, file_name):
     cv2.imwrite(concat_file, image)
     cv2.imwrite(depth_file, depth)
 
-def test_dir(model_file, image_dirs, output_dir):
+def test_dir(model_file, image_dirs:list, output_dir, count=DEFAULT_MAX_COUNT):
     model = ONNXModel(model_file)
 
     print(f"model file: {model_file}")
@@ -174,19 +194,26 @@ def test_dir(model_file, image_dirs, output_dir):
         print("-" * 50)
         img_lists = [[''] * DEFAULT_COUNT] * max(1, len(image_dirs))
     else:
-        dataset_name = os.path.basename(os.path.commonpath(image_dirs))
+        dataset_name = "_".join(os.path.commonpath(image_dirs).split('/')[-4:])
         output_dir = os.path.join(output_dir, dataset_name)
         MkdirSimple(output_dir)
         img_lists = [ReadImageList(image_dir) for image_dir in image_dirs]
 
+    if count < 0:
+        count = len(img_lists[0])
+
     if not no_image:
         root_len = len(image_dirs[0].strip().rstrip('/'))
-    print(f"Test image {MAX_COUNT} form {len(img_lists[0])} items in {len(img_lists)} group")
+    print(f"Test image {count} form {len(img_lists[0])} items in {len(img_lists)} group")
 
-    for count, img_files in enumerate(zip(*img_lists), 1):
-        if count > MAX_COUNT:
+    K_dict = {}
+
+    for i, img_files in enumerate(zip(*img_lists), 1):
+        if  i > count:
             break
-        image, depth, depth_norm = test_image(img_files, model)
+
+        intrinsic, config_file = set_by_config_yaml(img_files[0], K_dict)
+        image, depth, depth_norm = test_image(img_files, model, intrinsic)
         file_name = img_files[0][root_len+1:] if not no_image else f"random_{time.time()}.jpg"
         save_image(image, depth, output_dir, file_name)
 
@@ -195,7 +222,8 @@ def main():
     output = args.output
     MkdirSimple(output)
 
-    test_dir(args.model, [args.left_image,], output)
+    test_dir(args.model, [args.left_image,], output, count=args.max_count)
+    print("save result to ", output)
 
 
 if __name__ == '__main__':
